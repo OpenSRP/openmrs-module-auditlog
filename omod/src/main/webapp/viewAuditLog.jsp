@@ -75,7 +75,7 @@
     <table id="${moduleId}-details" width="100%" cellpadding="0" cellspacing="5">
         <tr>
             <th valign="top" class="${moduleId}_align_text_left"><spring:message code="${moduleId}.item"/></th>
-            <td id="${moduleId}-changes-item" width="100%"></td>
+            <td id="${moduleId}-changesItem" width="100%"></td>
         </tr>
         <tr>
             <th valign="top" class="${moduleId}_align_text_left"><spring:message code="${moduleId}.summary"/></th>
@@ -84,12 +84,12 @@
         <tr>
             <th valign="top" class="${moduleId}_align_text_left"><spring:message code="${moduleId}.activity"/></th>
             <c:choose>
-                <c:when test="${moduleId}-changes-activityDone == null }">
+                <c:when test="${moduleId}-changesActivityDone == null }">
                     <spring:message code="${moduleId}.notFound"/>
                     <td id="${moduleId}.notFound"></td>
                 </c:when>
                 <c:otherwise>
-                    <td id="${moduleId}-changes-activityDone"></td>
+                    <td id="${moduleId}-changesActivityDone"></td>
                 </c:otherwise>
             </c:choose>
         </tr>
@@ -171,7 +171,7 @@
     <table id="${moduleId}-child-details" width="100%" cellpadding="0" cellspacing="5">
         <tr>
             <th valign="top" class="${moduleId}_align_text_left"><spring:message code="${moduleId}.item"/></th>
-            <td id="${moduleId}-child-changes-item" width="100%"></td>
+            <td id="${moduleId}-child-changesItem" width="100%"></td>
         </tr>
         <tr>
             <th valign="top" class="${moduleId}_align_text_left"><spring:message code="${moduleId}.summary"/></th>
@@ -180,12 +180,12 @@
         <tr>
             <th valign="top" class="${moduleId}_align_text_left"><spring:message code="${moduleId}.activity"/></th>
             <c:choose>
-                <c:when test="${moduleId}-child-changes-activityDone == null }">
+                <c:when test="${moduleId}-child-changesActivityDone == null }">
                     <spring:message code="${moduleId}.notFound"/>
                     <td id="${moduleId}.notFound"></td>
                 </c:when>
                 <c:otherwise>
-                    <td id="${moduleId}-child-changes-activityDone"></td>
+                    <td id="${moduleId}-child-changesActivityDone"></td>
                 </c:otherwise>
             </c:choose>
         </tr>

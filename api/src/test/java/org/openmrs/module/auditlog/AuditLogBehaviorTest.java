@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.commons.lang.StringUtils;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.openmrs.Concept;
 import org.openmrs.ConceptClass;
@@ -62,6 +63,7 @@ import org.springframework.test.annotation.NotTransactional;
 /**
  * Contains tests for testing the core functionality of the module
  */
+@Ignore
 @SuppressWarnings("deprecation")
 public class AuditLogBehaviorTest extends BaseBehaviorTest {
 	

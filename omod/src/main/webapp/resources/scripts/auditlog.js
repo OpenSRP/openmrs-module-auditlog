@@ -1,3 +1,4 @@
+/* global $ */
 var auditLogDetailsMap = new Object();
 var dialogObj;
 var childDialogObj;
@@ -36,11 +37,11 @@ function auditlog_initTable(){
         modal: true,
         beforeClose: function(event, ui){
             //reset
-            $j("#"+auditlog_moduleId+"-changes-item").html("");
+            $j("#"+auditlog_moduleId+"-changesItem").html("");
             $j("#"+auditlog_moduleId+"-changes-summary").html("");
             $j("#"+auditlog_moduleId+"-changes-objectUuid").html("");
             $j("#"+auditlog_moduleId+"-changes-openmrsVersion").html("");
-            $j("#"+auditlog_moduleId+"-changes-activityDone").html("");
+            $j("#"+auditlog_moduleId+"-changesActivityDone").html("");
             $j("#"+auditlog_moduleId+"-childLogCount").html("");
             //remove all rows from previous displays except the header rows
             $j("#"+auditlog_moduleId+"-changes-table tr:gt(0)").remove();
@@ -59,11 +60,11 @@ function auditlog_initTable(){
         modal: true,
         beforeClose: function(event, ui){
             //reset
-            $j("#"+auditlog_moduleId+"-child-changes-item").html("");
+            $j("#"+auditlog_moduleId+"-child-changesItem").html("");
             $j("#"+auditlog_moduleId+"-child-changes-summary").html("");
             $j("#"+auditlog_moduleId+"-child-changes-objectUuid").html("");
             $j("#"+auditlog_moduleId+"-child-changes-openmrsVersion").html("");
-            $j("#"+auditlog_moduleId+"-child-changes-activityDone").html("");
+            $j("#"+auditlog_moduleId+"-child-changesActivityDone").html("");
             $j("#"+auditlog_moduleId+"-child-childLogCount").html("");
             //remove all rows from previous displays except the header rows
             $j("#"+auditlog_moduleId+"-child-changes-table tr:gt(0)").remove();
@@ -102,13 +103,13 @@ function displayLogDetails(logDetails, isChildLog){
         }
 
         if (logDetails.identifier) {
-            $j("#" + auditlog_moduleId + idPart + "-changes-item").html(logDetails.simpleTypeName);
+            $j("#" + auditlog_moduleId + idPart + "-changesItem").html(logDetails.simpleTypeName);
         }
         if (logDetails.openmrsVersion) {
             $j("#" + auditlog_moduleId + idPart + "-changes-openmrsVersion").html(logDetails.openmrsVersion);
         }
         if (logDetails.action) {
-            $j("#" + auditlog_moduleId + idPart + "-changes-activityDone").html(logDetails.action);
+            $j("#" + auditlog_moduleId + idPart + "-changesActivityDone").html(logDetails.action);
         }
         if(logDetails.changes){
             var auditLogChanges = logDetails.changes;
