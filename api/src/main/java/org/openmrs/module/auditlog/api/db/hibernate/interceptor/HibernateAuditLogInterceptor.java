@@ -314,7 +314,7 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 	public int[] findDirty(Object entity, Serializable id, Object[] currentState, Object[] previousState,
 	                       String[] propertyNames, Type[] types) {
 		if (InterceptorUtil.isAudited(entity.getClass())) {
-			if (entityCollectionsMap.get().peek().get(entity) == null) {
+			if (entityCollectionsMap.get()!=null && entityCollectionsMap.get().peek().get(entity) == null) {
 				//This is the first time we are trying to find collection elements for this object
 				if (log.isDebugEnabled()) {
 					log.debug("Finding collections for object:" + entity.getClass() + " #" + id);
