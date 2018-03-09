@@ -3,28 +3,13 @@
  * Version 1.0 (the "License"); you may not use this file except in
  * compliance with the License. You may obtain a copy of the License at
  * http://license.openmrs.org
- *
  * Software distributed under the License is distributed on an "AS IS"
  * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See the
  * License for the specific language governing rights and limitations
  * under the License.
- *
  * Copyright (C) OpenMRS, LLC.  All Rights Reserved.
  */
 package org.openmrs.module.auditlog.api.db.hibernate.interceptor;
-
-import java.io.Serializable;
-import java.sql.Blob;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.Stack;
 
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
@@ -32,13 +17,7 @@ import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.hibernate.CallbackException;
-import org.hibernate.EmptyInterceptor;
-import org.hibernate.EntityMode;
-import org.hibernate.Hibernate;
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
-import org.hibernate.Transaction;
+import org.hibernate.*;
 import org.hibernate.collection.PersistentCollection;
 import org.hibernate.engine.SessionImplementor;
 import org.hibernate.metadata.ClassMetadata;
@@ -56,13 +35,16 @@ import org.openmrs.util.OpenmrsUtil;
 import org.springframework.orm.hibernate3.SessionFactoryUtils;
 import org.springframework.stereotype.Component;
 
+import java.io.Serializable;
+import java.sql.Blob;
+import java.util.*;
+
 /**
  * A hibernate {@link org.hibernate.Interceptor} implementation, intercepts any database inserts,
  * updates and deletes and creates audit log entries for Audited Objects, it logs changes for a
  * single session meaning that if User A and B concurrently make changes to the same object, there
  * will be 2 log entries in the DB, one for each user's session. Any changes/inserts/deletes made to
  * the DB that are not made through the application won't be detected by the module.
- * 
  * <pre>
  * Trying to make this the very last intercepter in order to catch all updates, inserts and deletes. Typically this
  * should be after the AuditableInterceptor from core so that dateChanged and changedBy field are
@@ -71,51 +53,51 @@ import org.springframework.stereotype.Component;
  */
 @Component("zzz-auditLogInterceptor")
 public class HibernateAuditLogInterceptor extends EmptyInterceptor {
-	
+
 	private static final long serialVersionUID = 1L;
-	
+
 	private static final Log log = LogFactory.getLog(HibernateAuditLogInterceptor.class);
-	
+
 	//Use stacks to take care of nested transactions to avoid NPE since on each transaction
 	//completion the ThreadLocals get nullified, see code below, i.e a stack of two elements implies
 	//the element at the top of the stack is the inserts made in the inner/nested transaction
 	private ThreadLocal<Stack<HashSet<Object>>> inserts = new ThreadLocal<Stack<HashSet<Object>>>();
-	
+
 	private ThreadLocal<Stack<HashSet<Object>>> updates = new ThreadLocal<Stack<HashSet<Object>>>();
-	
+
 	private ThreadLocal<Stack<HashSet<Object>>> deletes = new ThreadLocal<Stack<HashSet<Object>>>();
-	
+
 	//Mapping between objects and maps of their changed property names and their older values,
 	//the first item in the array is the old value while the the second is the new value
 	private ThreadLocal<Stack<Map<Object, Map<String, Object[]>>>> objectChangesMap = new ThreadLocal<Stack<Map<Object, Map<String, Object[]>>>>();
-	
+
 	//Mapping between entities and lists of their Collections in the current session
 	private ThreadLocal<Stack<Map<Object, List<Collection<?>>>>> entityCollectionsMap = new ThreadLocal<Stack<Map<Object, List<Collection<?>>>>>();
-	
+
 	//Mapping between parent entities and lists of AuditLogs for their collection elements
 	private ThreadLocal<Stack<Map<Object, List<AuditLog>>>> ownerUuidChildLogsMap = new ThreadLocal<Stack<Map<Object, List<AuditLog>>>>();
-	
+
 	//Mapping between collection elements and their AuditLogs, will use
 	//this to avoid creating logs for collections elements multiple times
 	private ThreadLocal<Stack<Map<Object, AuditLog>>> childbjectUuidAuditLogMap = new ThreadLocal<Stack<Map<Object, AuditLog>>>();
-	
+
 	//Mapping between parent entities and sets of removed collection elements
 	private ThreadLocal<Stack<Map<Object, HashSet<Object>>>> entityRemovedChildrenMap = new ThreadLocal<Stack<Map<Object, HashSet<Object>>>>();
-	
+
 	private ThreadLocal<Stack<Date>> date = new ThreadLocal<Stack<Date>>();
-	
+
 	//Ignore these properties because they match auditLog.user and auditLog.dateCreated
 	private static final String[] IGNORED_PROPERTIES = new String[] { "changedBy", "dateChanged", "creator", "dateCreated",
-	        "voidedBy", "dateVoided", "retiredBy", "dateRetired", "personChangedBy", "personDateChanged", "personCreator",
-	        "personDateCreated" };
-	
+			"voidedBy", "dateVoided", "retiredBy", "dateRetired", "personChangedBy", "personDateChanged", "personCreator",
+			"personDateCreated" };
+
 	/**
 	 * @see org.hibernate.EmptyInterceptor#afterTransactionBegin(org.hibernate.Transaction)
 	 */
 	@Override
 	public void afterTransactionBegin(Transaction tx) {
 		initializeStacksIfNecessary();
-		
+
 		inserts.get().push(new HashSet<Object>());
 		updates.get().push(new HashSet<Object>());
 		deletes.get().push(new HashSet<Object>());
@@ -126,32 +108,31 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 		entityRemovedChildrenMap.get().push(new HashMap<Object, HashSet<Object>>());
 		date.get().push(new Date());
 	}
-	
+
 	/**
-	 * @see org.hibernate.EmptyInterceptor#onSave(Object, java.io.Serializable, Object[], String[],
-	 *      org.hibernate.type.Type[])
+	 * @see org.hibernate.EmptyInterceptor#onSave(Object, java.io.Serializable, Object[], String[], *      org.hibernate.type.Type[])
 	 */
 	@Override
 	public boolean onSave(Object entity, Serializable id, Object[] state, String[] propertyNames, Type[] types) {
 		if (InterceptorUtil.isAudited(entity.getClass())) {
+
 			if (log.isDebugEnabled()) {
 				log.debug("Creating log entry for created object with id:" + id + " of type:" + entity.getClass().getName());
 			}
-			
+
 			inserts.get().peek().add(entity);
 		}
-		
+
 		return false;
 	}
-	
+
 	/**
-	 * @see org.hibernate.EmptyInterceptor#onFlushDirty(Object, java.io.Serializable, Object[],
-	 *      Object[], String[], org.hibernate.type.Type[])
+	 * @see org.hibernate.EmptyInterceptor#onFlushDirty(Object, java.io.Serializable, Object[], *      Object[], String[], org.hibernate.type.Type[])
 	 */
 	@Override
 	public boolean onFlushDirty(Object entity, Serializable id, Object[] currentState, Object[] previousState,
 	                            String[] propertyNames, Type[] types) {
-		
+
 		if (propertyNames != null && InterceptorUtil.isAudited(entity.getClass())) {
 			if (previousState == null) {
 				//This is a detached object, load the previous state in a separate session
@@ -168,7 +149,7 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 						SessionFactoryUtils.closeSession(tmpSession);
 					}
 				}
-				
+
 			}
 			Map<String, Object[]> propertyChangesMap = null;//Map<propertyName, Object[]{currentValue, PreviousValue}>
 			for (int i = 0; i < propertyNames.length; i++) {
@@ -177,59 +158,58 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 				if (ArrayUtils.contains(IGNORED_PROPERTIES, propertyNames[i])) {
 					continue;
 				}
-				
+
 				Object previousValue = (previousState != null) ? previousState[i] : null;
 				Object currentValue = (currentState != null) ? currentState[i] : null;
 				if (!types[i].isCollectionType() && !OpenmrsUtil.nullSafeEquals(currentValue, previousValue)) {
 					//For string properties, ignore changes from null to blank and vice versa
 					//TODO This should be user configurable via a module GP
-					if (StringType.class.getName().equals(types[i].getClass().getName())
-					        || TextType.class.getName().equals(types[i].getClass().getName())) {
+					if (StringType.class.getName().equals(types[i].getClass().getName()) || TextType.class.getName()
+							.equals(types[i].getClass().getName())) {
 						String currentStateString = null;
 						if (currentValue != null && !StringUtils.isBlank(currentValue.toString())) {
 							currentStateString = currentValue.toString();
 						}
-						
+
 						String previousValueString = null;
 						if (previousValue != null && !StringUtils.isBlank(previousValue.toString())) {
 							previousValueString = previousValue.toString();
 						}
-						
+
 						//TODO Case sensibility here should be configurable via a GP
 						if (OpenmrsUtil.nullSafeEqualsIgnoreCase(previousValueString, currentStateString)) {
 							continue;
 						}
 					}
-					
+
 					if (propertyChangesMap == null) {
 						propertyChangesMap = new HashMap<String, Object[]>();
 					}
-					
+
 					String serializedPreviousValue = AuditLogUtil.serializeObject(previousValue);
 					String serializedCurrentValue = AuditLogUtil.serializeObject(currentValue);
-					
-					propertyChangesMap.put(propertyNames[i],
-					    new String[] { serializedCurrentValue, serializedPreviousValue });
+
+					propertyChangesMap
+							.put(propertyNames[i], new String[] { serializedCurrentValue, serializedPreviousValue });
 				}
 			}
-			
+
 			if (MapUtils.isNotEmpty(propertyChangesMap)) {
 				if (log.isDebugEnabled()) {
-					log.debug("Creating log entry for updated object with id:" + id + " of type:"
-					        + entity.getClass().getName());
+					log.debug("Creating log entry for updated object with id:" + id + " of type:" + entity.getClass()
+							.getName());
 				}
-				
+
 				updates.get().peek().add(entity);
 				objectChangesMap.get().peek().put(entity, propertyChangesMap);
 			}
 		}
-		
+
 		return false;
 	}
-	
+
 	/**
-	 * @see org.hibernate.EmptyInterceptor#onDelete(Object, java.io.Serializable, Object[],
-	 *      String[], org.hibernate.type.Type[])
+	 * @see org.hibernate.EmptyInterceptor#onDelete(Object, java.io.Serializable, Object[], *      String[], org.hibernate.type.Type[])
 	 */
 	@Override
 	public void onDelete(Object entity, Serializable id, Object[] state, String[] propertyNames, Type[] types) {
@@ -246,7 +226,7 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 			deletes.get().peek().add(entity);
 		}
 	}
-	
+
 	/**
 	 * @see org.hibernate.EmptyInterceptor#onCollectionUpdate(Object, java.io.Serializable)
 	 */
@@ -264,12 +244,12 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 				} else {
 					previousCollOrMap = previousStoredSnapshotMap;
 				}
-				
+
 				handleUpdatedCollection(collection, previousCollOrMap, owningObject, persistentColl.getRole());
 			}
 		}
 	}
-	
+
 	@Override
 	public void onCollectionRemove(Object collection, Serializable key) throws CallbackException {
 		//We need to get all collection elements and link their childlogs to the parent's
@@ -281,7 +261,7 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 				String propertyName = role.substring(role.lastIndexOf('.') + 1);
 				ClassMetadata cmd = AuditLogUtil.getClassMetadata(AuditLogUtil.getActualType(owningObject));
 				Object currentCollection = cmd.getPropertyValue(owningObject, propertyName, EntityMode.POJO);
-				
+
 				//Hibernate calls onCollectionRemove whenever the underlying collection is replaced with a
 				//new instance i.e one calls the collection's setter and passes in a new instance even if the
 				//new collection contains some elements, we want to treat this as regular collection update,
@@ -316,20 +296,19 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 				} else {
 					//TODO: Handle other persistent collections types e.g bags
 				}
-				
+
 				if (!isOwnerDeleted) {
 					handleUpdatedCollection(currentCollection, collection, owningObject, role);
 				}
 			}
 		}
 	}
-	
+
 	/**
 	 * This is a hacky way to find all loaded persistent objects in this session that have
 	 * collections
-	 * 
-	 * @see org.hibernate.EmptyInterceptor#findDirty(Object, java.io.Serializable, Object[],
-	 *      Object[], String[], org.hibernate.type.Type[])
+	 *
+	 * @see org.hibernate.EmptyInterceptor#findDirty(Object, java.io.Serializable, Object[], *      Object[], String[], org.hibernate.type.Type[])
 	 */
 	@Override
 	public int[] findDirty(Object entity, Serializable id, Object[] currentState, Object[] previousState,
@@ -340,7 +319,7 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 				if (log.isDebugEnabled()) {
 					log.debug("Finding collections for object:" + entity.getClass() + " #" + id);
 				}
-				
+
 				for (int i = 0; i < propertyNames.length; i++) {
 					if (types[i].isCollectionType()) {
 						Object coll = currentState[i];
@@ -353,21 +332,21 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 									entityCollectionsMap.get().peek().put(entity, new ArrayList<Collection<?>>());
 								}
 								if (!AuditLogUtil.getCollectionPersister(propertyNames[i], entity.getClass(), null)
-								        .isManyToMany()) {
+										.isManyToMany()) {
 									entityCollectionsMap.get().peek().get(entity).add(collection);
 								}
 							}
 						} //else {
-						  //TODO handle maps too because hibernate treats maps to be of CollectionType
-						  //}
+						//TODO handle maps too because hibernate treats maps to be of CollectionType
+						//}
 					}
 				}
 			}
 		}
-		
+
 		return super.findDirty(entity, id, currentState, previousState, propertyNames, types);
 	}
-	
+
 	/**
 	 * @see org.hibernate.EmptyInterceptor#beforeTransactionCompletion(org.hibernate.Transaction)
 	 */
@@ -377,10 +356,10 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 			if (inserts.get().peek().isEmpty() && updates.get().peek().isEmpty() && deletes.get().peek().isEmpty()) {
 				return;
 			}
-			
+
 			try {
 				//TODO handle daemon or un authenticated operations
-				
+
 				//If we have any entities in the session that have child collections and there were some updates,
 				//check all collection items to find dirty ones so that we can mark the the owners as dirty too
 				//I.e if a ConceptName/Mapping/Description was edited, mark the the Concept as dirty too
@@ -389,7 +368,7 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 						for (Object obj : coll) {
 							boolean isInsert = OpenmrsUtil.collectionContains(inserts.get().peek(), obj);
 							boolean isUpdate = OpenmrsUtil.collectionContains(updates.get().peek(), obj);
-							
+
 							//We handle the removed collections items below because either way they
 							//are nolonger in the current collection
 							if (isInsert || isUpdate) {
@@ -399,29 +378,29 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 								if (ownerHasUpdates) {
 									if (log.isDebugEnabled()) {
 										log.debug("There is already an auditlog for owner:" + owner.getClass() + " - "
-										        + InterceptorUtil.getId(owner));
+												+ InterceptorUtil.getId(owner));
 									}
 								} else if (!isOwnerNew) {
 									//A collection item was updated and no other update had been made on the owner
 									if (log.isDebugEnabled()) {
-										log.debug("Creating log entry for edited owner object with id:"
-										        + InterceptorUtil.getId(owner) + " of type:" + owner.getClass().getName()
-										        + " due to an update for a item in a child collection");
+										log.debug("Creating log entry for edited owner object with id:" + InterceptorUtil
+												.getId(owner) + " of type:" + owner.getClass().getName()
+												+ " due to an update for a item in a child collection");
 									}
 									updates.get().peek().add(owner);
 								}
-								
+
 								if (InterceptorUtil.isAudited(obj.getClass())) {
 									if (ownerUuidChildLogsMap.get().peek().get(owner) == null) {
 										ownerUuidChildLogsMap.get().peek().put(owner, new ArrayList<AuditLog>());
 									}
-									
+
 									AuditLog childLog = instantiateAuditLog(obj, isInsert ? Action.CREATED : Action.UPDATED);
-									
+
 									childbjectUuidAuditLogMap.get().peek().put(obj, childLog);
 									ownerUuidChildLogsMap.get().peek().get(owner).add(childLog);
 								}
-								
+
 								//TODO add this collection to the list of changes properties
 								/*Map<String, Object[]> propertyValuesMap = objectChangesMap.get().peek().get(owner);
 								if(propertyValuesMap == null)
@@ -431,7 +410,7 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 						}
 					}
 				}
-				
+
 				for (Map.Entry<Object, HashSet<Object>> entry : entityRemovedChildrenMap.get().peek().entrySet()) {
 					Object removedItemsOwner = entry.getKey();
 					for (Object removed : entry.getValue()) {
@@ -442,31 +421,34 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 							if (InterceptorUtil.isAudited(removed.getClass())) {
 								if (ownerUuidChildLogsMap.get().peek().get(removedItemsOwner) == null)
 									ownerUuidChildLogsMap.get().peek().put(removedItemsOwner, new ArrayList<AuditLog>());
-								
+
 								AuditLog childLog = instantiateAuditLog(removed, Action.DELETED);
-								
+
 								childbjectUuidAuditLogMap.get().peek().put(removed, childLog);
 								ownerUuidChildLogsMap.get().peek().get(removedItemsOwner).add(childLog);
 							}
 						}
 					}
 				}
-				
+
 				List<AuditLog> logs = new ArrayList<AuditLog>();
+
 				for (Object insert : inserts.get().peek()) {
 					logs.add(createAuditLogIfNecessary(insert, Action.CREATED));
 				}
-				
+
 				for (Object delete : deletes.get().peek()) {
 					logs.add(createAuditLogIfNecessary(delete, Action.DELETED));
 				}
-				
+
 				for (Object update : updates.get().peek()) {
 					logs.add(createAuditLogIfNecessary(update, Action.UPDATED));
 				}
-				
+
 				for (AuditLog al : logs) {
-					InterceptorUtil.saveAuditLog(al);
+					if (al.getUser().getUserId() != 1 || al.getUser().getUserId() != 2) {
+						InterceptorUtil.saveAuditLog(al);
+					}
 				}
 			}
 			catch (Exception e) {
@@ -485,14 +467,14 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 			childbjectUuidAuditLogMap.get().pop();
 			entityRemovedChildrenMap.get().pop();
 			date.get().pop();
-			
+
 			removeStacksIfEmpty();
 		}
 	}
-	
+
 	/**
 	 * Creates if necessary
-	 * 
+	 *
 	 * @param object the object to create for the AuditLog
 	 * @param action see {@link org.openmrs.module.auditlog.AuditLog.Action}
 	 */
@@ -502,7 +484,7 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 		if (auditLog == null) {
 			auditLog = instantiateAuditLog(object, action);
 		}
-		
+
 		if ((ownerUuidChildLogsMap != null && ownerUuidChildLogsMap.get().peek().containsKey(object))) {
 			for (AuditLog child : ownerUuidChildLogsMap.get().peek().get(object)) {
 				auditLog.addChildAuditLog(child);
@@ -510,11 +492,11 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 		}
 		return auditLog;
 	}
-	
+
 	/**
 	 * Creates a new instance of an {@link org.openmrs.module.auditlog.AuditLog} for the specified
 	 * object and Action
-	 * 
+	 *
 	 * @param object the object to create for the AuditLog
 	 * @param action see {@link org.openmrs.module.auditlog.AuditLog.Action}
 	 * @return the created AuditLog
@@ -522,8 +504,8 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 	private AuditLog instantiateAuditLog(Object object, Action action) {
 		Serializable id = InterceptorUtil.getId(object);
 		String serializedId = AuditLogUtil.serializeObject(id);
-		AuditLog auditLog = new AuditLog(object.getClass(), serializedId, action, Context.getAuthenticatedUser(), date.get()
-		        .peek());
+		AuditLog auditLog = new AuditLog(object.getClass(), serializedId, action, Context.getAuthenticatedUser(),
+				date.get().peek());
 		auditLog.setOpenmrsVersion(OpenmrsConstants.OPENMRS_VERSION_SHORT);
 		auditLog.setModuleVersion(AuditLogConstants.MODULE_VERSION);
 		if (action == Action.UPDATED || action == Action.DELETED) {
@@ -544,7 +526,7 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 		}
 		return auditLog;
 	}
-	
+
 	private void initializeStacksIfNecessary() {
 		if (inserts.get() == null) {
 			inserts.set(new Stack<HashSet<Object>>());
@@ -574,7 +556,7 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 			date.set(new Stack<Date>());
 		}
 	}
-	
+
 	private void removeStacksIfEmpty() {
 		if (inserts.get().empty()) {
 			inserts.remove();
@@ -604,16 +586,17 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 			date.remove();
 		}
 	}
-	
-	private void handleUpdatedCollection(Object currentCollOrMap, Object previousCollOrMap, Object owningObject, String role) {
-		
+
+	private void handleUpdatedCollection(Object currentCollOrMap, Object previousCollOrMap, Object owningObject,
+	                                     String role) {
+
 		if (currentCollOrMap != null || previousCollOrMap != null) {
 			String propertyName = role.substring(role.lastIndexOf('.') + 1);
-			
+
 			if (objectChangesMap.get().peek().get(owningObject) == null) {
 				objectChangesMap.get().peek().put(owningObject, new HashMap<String, Object[]>());
 			}
-			
+
 			Object previousSerializedItems = null;
 			Object newSerializedItems = null;
 			Class<?> collectionOrMapType;
@@ -622,7 +605,7 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 			} else {
 				collectionOrMapType = previousCollOrMap.getClass();
 			}
-			
+
 			if (Collection.class.isAssignableFrom(collectionOrMapType)) {
 				Collection cColl = (Collection) currentCollOrMap;
 				Collection pColl = (Collection) previousCollOrMap;
@@ -641,10 +624,10 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 						pColl = Collections.EMPTY_SET;
 					}
 				}
-				
+
 				previousSerializedItems = AuditLogUtil.serializeCollectionItems(pColl);
 				newSerializedItems = AuditLogUtil.serializeCollectionItems(cColl);
-				
+
 				//Track removed items so that when we create logs for them,
 				//and link them to the parent's log
 				Set<Object> removedItems = new HashSet<Object>();
@@ -664,14 +647,14 @@ public class HibernateAuditLogInterceptor extends EmptyInterceptor {
 				if (previousCollOrMap.equals(currentCollOrMap)) {
 					return;
 				}
-				
+
 				previousSerializedItems = AuditLogUtil.serializeMapItems((Map) previousCollOrMap);
 				newSerializedItems = AuditLogUtil.serializeMapItems((Map) currentCollOrMap);
 			}
-			
+
 			updates.get().peek().add(owningObject);
 			objectChangesMap.get().peek().get(owningObject)
-			        .put(propertyName, new Object[] { newSerializedItems, previousSerializedItems });
+					.put(propertyName, new Object[] { newSerializedItems, previousSerializedItems });
 		}
 	}
 }

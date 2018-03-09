@@ -42,29 +42,29 @@ import org.openmrs.module.auditlog.web.util.AuditLogWebConstants;
  * Processes DWR calls for the module
  */
 public class DWRAuditLogService {
-	
+
 	protected final Log log = LogFactory.getLog(getClass());
-	
+
 	private AuditLogService service;
-	
+
 	private AuditLogService getService() {
 		if (service == null) {
 			service = Context.getService(AuditLogService.class);
 		}
 		return service;
 	}
-	
+
 	/**
 	 * Gets the {@link AuditLogDetails} for the auditlog with the specified uuid
-	 * 
+	 *
 	 * @param auditLogUuid
 	 * @return
 	 */
 	@SuppressWarnings("unchecked")
 	public AuditLogDetails getAuditLogDetails(String auditLogUuid) {
-		
+
 		Context.requirePrivilege(AuditLogWebConstants.PRIV_VIEW_AUDITLOG);
-		
+
 		if (StringUtils.isNotBlank(auditLogUuid)) {
 			AuditLog auditLog = getService().getObjectByUuid(AuditLog.class, auditLogUuid);
 			if (auditLog != null) {
@@ -73,13 +73,13 @@ public class DWRAuditLogService {
 				Map<String, Object> otherData = new HashMap<String, Object>();
 				Class<?> clazz = auditLog.getType();
 				if (!auditLog.getAction().equals(Action.DELETED)) {
-					
+
 					Object obj = getService().getObjectById(clazz, auditLog.getIdentifier());
 					if (obj != null) {
 						objectExists = true;
 						displayString = getDisplayString(obj, false);
 					}
-					
+
 					if (auditLog.getAction().equals(Action.UPDATED)) {
 						Map<String, List> changes = AuditLogUtil.getChangesOfUpdatedItem(auditLog);
 						if (changes.size() > 0) {
@@ -90,43 +90,43 @@ public class DWRAuditLogService {
 								if (CollectionUtils.isNotEmpty(entry.getValue())) {
 									Object newValueObj = AuditLogUtil.getNewValueOfUpdatedItem(propertyName, auditLog);
 									Object previousValueObj = AuditLogUtil.getPreviousValueOfUpdatedItem(propertyName,
-									    auditLog);
+											auditLog);
 									if (newValueObj != null || previousValueObj != null) {
 										newValueDisplay += getPrettyPropertyValue(propertyName, newValueObj, clazz);
 										preValueDisplay += getPrettyPropertyValue(propertyName, previousValueObj, clazz);
 									}
 								}
-								
+
 								otherData.put(propertyName, new String[] { newValueDisplay, preValueDisplay });
 							}
 						}
 					}
-					
+
 				} else {
 					Map<String, String> changes = AuditLogUtil.getLastStateOfDeletedItem(auditLog);
 					for (Map.Entry<String, String> entry : changes.entrySet()) {
 						otherData.put(entry.getKey(), getPrettyPropertyValue(entry.getKey(), entry.getValue(), clazz));
 					}
 				}
-				
+
 				AuditLogDetails details = new AuditLogDetails(displayString, auditLog.getIdentifier(),
-				        auditLog.getSimpleTypeName(), auditLog.getAction().name(), auditLog.getUuid(),
-				        auditLog.getOpenmrsVersion(), objectExists, otherData);
+						auditLog.getSimpleTypeName(), auditLog.getAction().name(), auditLog.getUuid(),
+						auditLog.getOpenmrsVersion(), objectExists, otherData, auditLog.getUser());
 				if (auditLog.hasChildLogs()) {
 					List<AuditLogDetails> childDetails = new ArrayList<AuditLogDetails>();
 					for (AuditLog childLog : auditLog.getChildAuditLogs()) {
 						childDetails.add(new AuditLogDetails(null, childLog.getIdentifier(), childLog.getSimpleTypeName(),
-						        childLog.getAction().name(), childLog.getUuid(), auditLog.getOpenmrsVersion(), false, null));
+								childLog.getAction().name(), childLog.getUuid(), auditLog.getOpenmrsVersion(), false, null,auditLog.getUser()));
 					}
 					details.setChildAuditLogDetails(childDetails);
 				}
-				
+
 				return details;
 			}
 		}
 		return null;
 	}
-	
+
 	private String getPrettyPropertyValue(String propertyName, Object value, Class<?> clazz) {
 		String prettyValue = null;
 		Field field = AuditLogUtil.getField(clazz, propertyName);
@@ -135,17 +135,17 @@ public class DWRAuditLogService {
 		if (field != null && value != null) {
 			prettyValue = getPropertyDisplayString(clazz, propertyName, field.getType(), value);
 		}
-		
+
 		if (prettyValue == null) {
 			prettyValue = "";
 		}
-		
+
 		return prettyValue;
 	}
-	
+
 	/**
 	 * Gets the display string for a property
-	 * 
+	 *
 	 * @param owningType
 	 * @param propertyName
 	 * @param propertyValue
@@ -153,12 +153,12 @@ public class DWRAuditLogService {
 	 */
 	private String getPropertyDisplayString(Class<?> owningType, String propertyName, Class<?> propertyType,
 	                                        Object propertyValue) {
-		
+
 		String displayString = "";
 		if (propertyValue == null) {
 			return displayString;
 		}
-		
+
 		try {
 			if (Collection.class.isAssignableFrom(propertyType) || Map.class.isAssignableFrom(propertyType)) {
 				//TODO this not to fail if the primary key was a String e.g for privileges and had a ',' in it
@@ -181,23 +181,23 @@ public class DWRAuditLogService {
 								//ignore
 							}
 						}
-						
+
 						if (item != null) {
 							items.add(item);
 						} else {
 							unmatchedUuidsOrIds.add(currUuidOrStr);
 						}
 					}
-					
+
 					StringBuilder sb = new StringBuilder("<ul class='" + AuditLogConstants.MODULE_ID
-					        + "_collection_property'>");
+							+ "_collection_property'>");
 					for (Object o1 : items) {
 						sb.append("<li class='" + AuditLogConstants.MODULE_ID + "_collection_item'>"
-						        + getDisplayString(o1, true) + "</li>");
+								+ getDisplayString(o1, true) + "</li>");
 					}
 					for (String str : unmatchedUuidsOrIds) {
 						sb.append("<li class='" + AuditLogConstants.MODULE_ID + "_collection_item "
-						        + AuditLogConstants.MODULE_ID + "_collection_item_unmatched'>" + str + "</li>");
+								+ AuditLogConstants.MODULE_ID + "_collection_item_unmatched'>" + str + "</li>");
 					}
 					sb.append("</ul>");
 					displayString += sb.toString();
@@ -206,12 +206,12 @@ public class DWRAuditLogService {
 						return displayString;
 					}
 					StringBuilder sb = new StringBuilder("<ul class='" + AuditLogConstants.MODULE_ID
-					        + "_collection_property'>");
-					
+							+ "_collection_property'>");
+
 					Map<Object, Object> map = (Map) propertyValue;
 					for (Object entry : map.entrySet()) {
 						sb.append("<li class='" + AuditLogConstants.MODULE_ID + "_collection_item'>"
-						        + getDisplayString(entry, true) + " = " + getDisplayString(entry, true) + "</li>");
+								+ getDisplayString(entry, true) + " = " + getDisplayString(entry, true) + "</li>");
 					}
 					sb.append("</ul>");
 					displayString += sb.toString();
@@ -225,7 +225,7 @@ public class DWRAuditLogService {
 							displayString = getDisplayString(actualObject, true);
 						} else {
 							displayString = "<span class=" + AuditLogConstants.MODULE_ID + "'_deleted'>" + stringValue
-							        + "</span>";
+									+ "</span>";
 						}
 					} else {
 						displayString = stringValue;
@@ -236,13 +236,13 @@ public class DWRAuditLogService {
 		catch (Exception e) {
 			log.warn("Error:", e);
 		}
-		
+
 		return displayString;
 	}
-	
+
 	/**
 	 * Generates the display text for the specified object
-	 * 
+	 *
 	 * @param obj
 	 * @param includeUuidAndId
 	 * @return the display text
@@ -270,7 +270,7 @@ public class DWRAuditLogService {
 					displayString += obs.getConcept().getName().getName();
 				}
 			}
-			
+
 			displayString += obs.getValueAsString(Context.getLocale());
 		} else if (OpenmrsMetadata.class.isAssignableFrom(obj.getClass())) {
 			OpenmrsMetadata metadataObj = (OpenmrsMetadata) obj;
@@ -278,11 +278,11 @@ public class DWRAuditLogService {
 				displayString += metadataObj.getName();
 			}
 		}
-		
+
 		if (StringUtils.isBlank(displayString)) {
 			displayString += obj.toString();
 		}
-		
+
 		if (includeUuidAndId && OpenmrsObject.class.isAssignableFrom(obj.getClass())) {
 			OpenmrsObject openmrsObj = (OpenmrsObject) obj;
 			String id = "";
@@ -295,7 +295,7 @@ public class DWRAuditLogService {
 			catch (Exception e) {
 				//ignore
 			}
-			
+
 			try {
 				if (openmrsObj.getId() != null) {
 					id = " [" + openmrsObj.getId() + "]";
@@ -304,14 +304,14 @@ public class DWRAuditLogService {
 			catch (Exception e) {
 				//ignore
 			}
-			
+
 			if (StringUtils.isBlank(displayString)) {
 				displayString = uuid + id;
 			} else {
 				displayString = displayString + " - " + uuid + id;
 			}
 		}
-		
+
 		return displayString;
 	}
 }
