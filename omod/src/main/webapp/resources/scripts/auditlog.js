@@ -1,3 +1,4 @@
+/* global $ */
 var auditLogDetailsMap = new Object();
 var dialogObj;
 var childDialogObj;
@@ -36,10 +37,11 @@ function auditlog_initTable(){
         modal: true,
         beforeClose: function(event, ui){
             //reset
-            $j("#"+auditlog_moduleId+"-changes-identifier").html("");
+            $j("#"+auditlog_moduleId+"-changesItem").html("");
             $j("#"+auditlog_moduleId+"-changes-summary").html("");
             $j("#"+auditlog_moduleId+"-changes-objectUuid").html("");
             $j("#"+auditlog_moduleId+"-changes-openmrsVersion").html("");
+            $j("#"+auditlog_moduleId+"-changesActivityDone").html("");
             $j("#"+auditlog_moduleId+"-childLogCount").html("");
             //remove all rows from previous displays except the header rows
             $j("#"+auditlog_moduleId+"-changes-table tr:gt(0)").remove();
@@ -58,10 +60,11 @@ function auditlog_initTable(){
         modal: true,
         beforeClose: function(event, ui){
             //reset
-            $j("#"+auditlog_moduleId+"-child-changes-identifier").html("");
+            $j("#"+auditlog_moduleId+"-child-changesItem").html("");
             $j("#"+auditlog_moduleId+"-child-changes-summary").html("");
             $j("#"+auditlog_moduleId+"-child-changes-objectUuid").html("");
             $j("#"+auditlog_moduleId+"-child-changes-openmrsVersion").html("");
+            $j("#"+auditlog_moduleId+"-child-changesActivityDone").html("");
             $j("#"+auditlog_moduleId+"-child-childLogCount").html("");
             //remove all rows from previous displays except the header rows
             $j("#"+auditlog_moduleId+"-child-changes-table tr:gt(0)").remove();
@@ -100,10 +103,13 @@ function displayLogDetails(logDetails, isChildLog){
         }
 
         if (logDetails.identifier) {
-            $j("#" + auditlog_moduleId + idPart + "-changes-identifier").html(logDetails.identifier);
+            $j("#" + auditlog_moduleId + idPart + "-changesItem").html(logDetails.simpleTypeName);
         }
         if (logDetails.openmrsVersion) {
             $j("#" + auditlog_moduleId + idPart + "-changes-openmrsVersion").html(logDetails.openmrsVersion);
+        }
+        if (logDetails.action) {
+            $j("#" + auditlog_moduleId + idPart + "-changesActivityDone").html(logDetails.action);
         }
         if(logDetails.changes){
             var auditLogChanges = logDetails.changes;
@@ -115,16 +121,16 @@ function displayLogDetails(logDetails, isChildLog){
                 if(isUpdate){
                     $j("#"+auditlog_moduleId+idPart+"-changes-table tr:last").after(
                         "<tr>" +
-                            "<td class=\"auditlog_align_text_left\" valign=\"top\">"+propertyName+"</td>"+
-                            "<td class=\"auditlog_align_text_left\" valign=\"top\">"+currentProperty[0]+"</td>"+
-                            "<td class=\"auditlog_align_text_left\" valign=\"top\">"+currentProperty[1]+"</td>" +
-                            "</tr>");
+                        "<td class=\"auditlog_align_text_left\" valign=\"top\">"+propertyName+"</td>"+
+                        "<td class=\"auditlog_align_text_left\" valign=\"top\">"+currentProperty[0]+"</td>"+
+                        "<td class=\"auditlog_align_text_left\" valign=\"top\">"+currentProperty[1]+"</td>" +
+                        "</tr>");
                 }else{
                     $j("#"+auditlog_moduleId+idPart+"-delete-otherData-table tr:last").after(
                         "<tr>" +
-                            "<td class=\"auditlog_align_text_left\" valign=\"top\">"+propertyName+"</td>"+
-                            "<td class=\"auditlog_align_text_left\" valign=\"top\">"+currentProperty+"</td>" +
-                            "</tr>");
+                        "<td class=\"auditlog_align_text_left\" valign=\"top\">"+propertyName+"</td>"+
+                        "<td class=\"auditlog_align_text_left\" valign=\"top\">"+currentProperty+"</td>" +
+                        "</tr>");
                 }
             });
 
@@ -150,7 +156,7 @@ function displayLogDetails(logDetails, isChildLog){
             $j.each(childAuditLogDetails, function(index, detail){
                 $j("#"+auditlog_moduleId+idPart+"-childAuditLogDetails-table tr:last").after(
                     "<tr class=\"auditlog_"+detail.action+" auditlog_child_log\" onclick=\"auditlog_showDetails('"+detail.uuid+"', true)\">"+
-                        "<td class=\"auditlog_align_text_left\" valign=\"top\">"+detail.simpleTypeName+"</td></tr>");
+                    "<td class=\"auditlog_align_text_left\" valign=\"top\">"+detail.simpleTypeName+"</td></tr>");
             });
             $j("#"+auditlog_moduleId+idPart+"-details .auditlog-childAuditLogDetails-element").show();
         }
